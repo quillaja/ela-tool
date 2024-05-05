@@ -2,7 +2,7 @@
 
 [project]
 name = "ELATool"
-version = "0.0.0"
+version = "0.0.1"
 description = "A geoprocessing tool to estimate the ELA from a glacier surface."
 # readme = "README.md"
 license = { file = "LICENSE" } # see classifiers
@@ -32,7 +32,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-dependencies = []
+dependencies = ["numpy==1.22.4", "matplotlib==3.6.3", "seaborn==0.12.2"]
 
 [project.urls]
 # Homepage = "https://example.com"
