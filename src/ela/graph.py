@@ -1,10 +1,29 @@
 from itertools import chain
-from typing import Iterable
+from typing import Iterable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sb
-from slice import Slice
+
+from .slice import Slice
+
+_default_theme = "whitegrid"
+sb.set_theme(style=_default_theme)
+
+
+def show(dem_data: np.ndarray, filename: str, title: Optional[str] = None):
+    sb.set_theme(style="white")
+
+    fig, axes = plt.subplots()
+    ramp = "viridis"
+    axes.imshow(dem_data, cmap=ramp)
+    fig.colorbar(axes.pcolor(dem_data, cmap=ramp))
+    if title:
+        fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(filename)
+
+    sb.set_theme(style=_default_theme)
 
 
 def prep_slices_for_histogram(slices: Iterable[Slice]) -> np.ndarray:

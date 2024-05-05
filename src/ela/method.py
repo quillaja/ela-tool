@@ -3,8 +3,9 @@ from typing import Iterable
 
 import numpy as np
 from ela import backend
-from search import SearchTest, SearchValue
-from slice import Slice
+
+from .search import SearchTest, SearchValue
+from .slice import Slice
 
 
 def absolute_difference(target: float, tolerance: float = 0.001) -> SearchTest:
