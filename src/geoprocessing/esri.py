@@ -12,6 +12,7 @@ from .interface import Geoprocessor, HistData
 
 
 class EsriGeoprocessor(Geoprocessor):
+    """A Geoprocessor() that interfaces with ArcGIS Pro via `arcpy`."""
 
     def message(self, msg: str) -> None:
         arcpy.AddMessage(msg)

@@ -1,6 +1,6 @@
-from typing import Optional
+import typing
 
 from geoprocessing import EsriGeoprocessor, Geoprocessor
 
-backend: Optional[Geoprocessor] = None
+backend: typing.Optional[Geoprocessor] = None
 """Pick one!"""
