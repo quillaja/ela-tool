@@ -6,7 +6,8 @@ from typing import Literal
 
 import arcpy
 import numpy as np
-from interface import Geoprocessor
+
+from .interface import Geoprocessor, HistData
 
 # arcpy.CheckOutExtension("3D")  # do i need this?
 
@@ -14,20 +15,23 @@ from interface import Geoprocessor
 class EsriGeoprocessor(Geoprocessor):
 
     @cache
-    def surface_area(self, surface: str, elevation: float) -> float:
+    def surface_area(self, dem: str, elevation: float) -> float:
+        # https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/surface-volume.htm
         side = "BELOW"
-        result = arcpy.SurfaceVolume_3d(surface, None, side, elevation).getMessage(1)
+        result = arcpy.SurfaceVolume_3d(dem, None, side, elevation).getMessage(1)
         # print(result)
         match = re.search(r"3D Area=\s*(?P<area>\d*[.,]?\d*)", result)
         area = match.group("area")
         return float(area)
 
     def min_max_elevations(self, dem: str) -> tuple[float, float]:
+        # https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/raster-object.htm
         r = arcpy.Raster(dem)
         return (r.minimum, r.maximum)
 
     # def cellsize(self, dem: str) -> tuple[float, float]:
     #     r = arcpy.Raster(dem)
+        # #https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/spatialreference.htm
         # crs: arcpy.SpatialReference = r.spatialReference
         # print(f"{crs.XYResolution = !s}")
         # print(f"{crs.abbreviation = !s}")
@@ -58,8 +62,20 @@ class EsriGeoprocessor(Geoprocessor):
     #     arcpy.Delete_management(slope_raster)
     #     return slope.mean
 
-    def histogram(self, dem: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        values: np.ndarray = arcpy.RasterToNumPyArray(dem, nodata_to_value=math.nan)
+    def array(self, dem: str) -> np.ndarray:
+        # https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/rastertonumpyarray-function.htm
+        return arcpy.RasterToNumPyArray(dem, nodata_to_value=math.nan)
+
+    def histogram(self, dem: str) -> HistData:
+        """
+        Thing.
+
+        :param dem: A path to the raster DEM.
+        :kind dem: str
+        :return: values, counts, and bins from numpy histogram.
+        :rtype: HistData 
+        """
+        values: np.ndarray = self.array(dem)
         values = values.flatten()
         values = values[~np.isnan(values)]
         values.sort()
@@ -67,4 +83,8 @@ class EsriGeoprocessor(Geoprocessor):
         # print("hist:", low, high, high-low)
         bins = (x for x in range(low, high+1))
         counts, bins = np.histogram(values, bins=np.fromiter(bins, dtype=float))
-        return (values, counts, bins)
+        return HistData(values, counts, bins)
+
+    def create_contours(self, dem: str, polylines: str, contours: list[float]) -> None:
+        # https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/contour-list.htm
+        arcpy.ContourList_3d(dem, polylines, contours)

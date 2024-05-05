@@ -1,2 +1,2 @@
-from esri import EsriGeoprocessor
-from interface import Geoprocessor
+from .esri import EsriGeoprocessor
+from .interface import Geoprocessor
