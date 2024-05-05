@@ -1,12 +1,11 @@
 import math
 import re
 from functools import cache
-from pathlib import Path
 
 import arcpy
 import numpy as np
 
-from .interface import Geoprocessor, HistData
+from ela import Geoprocessor, HistData
 
 # arcpy.CheckOutExtension("3D")  # do i need this?
 

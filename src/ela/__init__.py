@@ -1,6 +1,6 @@
 import typing
 
-from geoprocessing import EsriGeoprocessor, Geoprocessor
+from .geoprocessing import Geoprocessor, HistData
 
 backend: typing.Optional[Geoprocessor] = None
 """Pick one!"""
