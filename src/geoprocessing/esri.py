@@ -2,7 +2,6 @@ import math
 import re
 from functools import cache
 from pathlib import Path
-from typing import Literal
 
 import arcpy
 import numpy as np
@@ -13,6 +12,9 @@ from .interface import Geoprocessor, HistData
 
 
 class EsriGeoprocessor(Geoprocessor):
+
+    def message(self, msg: str) -> None:
+        arcpy.AddMessage(msg)
 
     @cache
     def surface_area(self, dem: str, elevation: float) -> float:
@@ -67,20 +69,11 @@ class EsriGeoprocessor(Geoprocessor):
         return arcpy.RasterToNumPyArray(dem, nodata_to_value=math.nan)
 
     def histogram(self, dem: str) -> HistData:
-        """
-        Thing.
-
-        :param dem: A path to the raster DEM.
-        :kind dem: str
-        :return: values, counts, and bins from numpy histogram.
-        :rtype: HistData 
-        """
         values: np.ndarray = self.array(dem)
         values = values.flatten()
         values = values[~np.isnan(values)]
         values.sort()
         low, high = math.floor(values.min()), math.ceil(values.max())
-        # print("hist:", low, high, high-low)
         bins = (x for x in range(low, high+1))
         counts, bins = np.histogram(values, bins=np.fromiter(bins, dtype=float))
         return HistData(values, counts, bins)
