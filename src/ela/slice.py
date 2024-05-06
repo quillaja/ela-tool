@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from itertools import repeat
 from typing import Iterable
 
-from ela import backend
+from . import get_backend
 
 
 @dataclass
@@ -26,13 +26,13 @@ def _determine_worker_count() -> int:
 
 
 def create_slices(surface: str, interval: float) -> Iterable[Slice]:
-    min_elev, max_elev = backend.min_max_elevations(surface)
-    total_area = backend.surface_area(surface, max_elev)
+    min_elev, max_elev = get_backend().min_max_elevations(surface)
+    total_area = get_backend().surface_area(surface, max_elev)
     elev = min_elev+interval
     prev_area = 0
     slices: list[Slice] = []
     while elev <= max_elev + interval:
-        area = backend.surface_area(surface, elev)
+        area = get_backend().surface_area(surface, elev)
         slice_area = area-prev_area
         slices.append(Slice(
             top=elev,
@@ -52,8 +52,8 @@ def slice_surface_area(data: tuple[Slice, str, float]) -> Slice:
     top, mid, and bottom, at a minimum. Returns a new complete Slice.
     """
     s, surface, total_area = data
-    area_from_top = backend.surface_area(surface, s.top)
-    area_from_bottom = backend.surface_area(surface, s.bottom)
+    area_from_top = get_backend().surface_area(surface, s.top)
+    area_from_bottom = get_backend().surface_area(surface, s.bottom)
     slice_area = area_from_top-area_from_bottom
     s.area = slice_area
     s.weight = slice_area/total_area
@@ -61,8 +61,8 @@ def slice_surface_area(data: tuple[Slice, str, float]) -> Slice:
 
 
 def create_slices_threadpool(surface: str, interval: float) -> Iterable[Slice]:
-    min_elev, max_elev = backend.min_max_elevations(surface)
-    total_area = backend.surface_area(surface, max_elev)
+    min_elev, max_elev = get_backend().min_max_elevations(surface)
+    total_area = get_backend().surface_area(surface, max_elev)
     slices: list[Slice] = []
 
     elev = min_elev+interval
@@ -71,7 +71,7 @@ def create_slices_threadpool(surface: str, interval: float) -> Iterable[Slice]:
         elev += interval
 
     WORKERS = _determine_worker_count()
-    print(f"using {WORKERS} threads")
+    # print(f"using {WORKERS} threads")
     data = zip(slices, repeat(surface, len(slices)), repeat(total_area, len(slices)))
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         complete_slices = pool.map(slice_surface_area, data, chunksize=4)

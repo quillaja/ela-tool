@@ -2,8 +2,8 @@ import math
 from typing import Iterable
 
 import numpy as np
-from ela import backend
 
+from . import get_backend
 from .search import SearchTest, SearchValue
 from .slice import Slice
 
@@ -41,12 +41,12 @@ def aar_from_slices(slices: Iterable[Slice]) -> SearchValue:
 
 
 def aar_direct(surface: str) -> SearchValue:
-    _, max_elev = backend.min_max_elevations(surface)
-    total_area = backend.surface_area(surface, max_elev)
+    _, max_elev = get_backend().min_max_elevations(surface)
+    total_area = get_backend().surface_area(surface, max_elev)
 
     def ratio(trial_ela: float) -> float:
         # this surface_area() was originally the only one using "ABOVE"
-        accumulation_area = total_area - backend.surface_area(surface, trial_ela)
+        accumulation_area = total_area - get_backend().surface_area(surface, trial_ela)
         return accumulation_area/total_area
 
     return ratio
