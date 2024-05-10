@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, Union
 
 import numpy as np
 
@@ -78,7 +78,7 @@ class Geoprocessor(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def create_contours(self, dem: str, polylines: str, contours: list[float]) -> None:
+    def create_contours(self, dem: str, polylines: str, contours: Union[float, list[float]]) -> None:
         """
         Creates polyline geometry features in a storage location at `polylines`
         based on the surface of dem and the list of elevations in contours.

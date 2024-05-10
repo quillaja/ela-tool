@@ -1,10 +1,10 @@
 import math
 import re
 from functools import cache
+from typing import Union
 
 import arcpy
 import numpy as np
-
 from ela import Geoprocessor, HistData
 
 # arcpy.CheckOutExtension("3D")  # do i need this?
@@ -78,6 +78,6 @@ class EsriGeoprocessor(Geoprocessor):
         counts, bins = np.histogram(values, bins=np.fromiter(bins, dtype=float))
         return HistData(values, counts, bins)
 
-    def create_contours(self, dem: str, polylines: str, contours: list[float]) -> None:
+    def create_contours(self, dem: str, polylines: str, contours: Union[float, list[float]]) -> None:
         # https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/contour-list.htm
         arcpy.ContourList_3d(dem, polylines, contours)
