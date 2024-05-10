@@ -7,6 +7,11 @@ SearchTest = Callable[[float], bool]
 
 def binary_search(target: float, low: float, high: float,
                   value: SearchValue, found: SearchTest) -> float:
+    """
+    Perform a binary search for a `target` ratio at elevations between `low`
+    and `high`. Trial ratio values are provided by the `value` function and
+    are tested against `target` using the `found` function.
+    """
     candidate: float = math.nan
     iterations: int = 0
     end_loop: bool = False
@@ -26,6 +31,11 @@ def binary_search(target: float, low: float, high: float,
 
 def linear_search(target: float, low: float, high: float,
                   value: SearchValue, found: SearchTest) -> float:
+    """
+    Perform a linear search for a `target` ratio at elevations between `low`
+    and `high`. Trial ratio values are provided by the `value` function and
+    are tested against `target` using the `found` function.
+    """
     MAX_INTERVAL: int = 50
     iterations: int = 0
     elev = low

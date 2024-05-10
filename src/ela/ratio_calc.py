@@ -9,14 +9,26 @@ from .slice import Slice
 
 
 def absolute_difference(target: float, tolerance: float = 0.001) -> SearchTest:
+    """
+    Return a function that will test if a trial number is close to `target`
+    within a a certain absolute difference.
+    """
     return lambda trial: abs(trial-target) <= tolerance
 
 
 def percent_difference(target: float, tolerance: float = 1.0) -> SearchTest:
+    """
+    Return a function that will test if a trial number is close to `target`
+    within a certain percent difference.
+    """
     return lambda trial: abs((trial-target)/target) <= (tolerance/100.0)
 
 
 def br_from_slices(slices: Iterable[Slice]) -> SearchValue:
+    """
+    Return a function that calculates a AABR for a trial ELA using 
+    pregenerated slices.
+    """
     def ratio(trial_ela: float) -> float:
         acc = 0.0
         abl = 0.0
@@ -33,6 +45,10 @@ def br_from_slices(slices: Iterable[Slice]) -> SearchValue:
 
 
 def aar_from_slices(slices: Iterable[Slice]) -> SearchValue:
+    """
+    Get a function that calculates an AAR for a trial ELA using
+    pre-generated slices.
+    """
     def ratio(trial_ela: float) -> float:
         return sum((s.weight for s in slices if s.mid >= trial_ela))
     return ratio
@@ -41,6 +57,10 @@ def aar_from_slices(slices: Iterable[Slice]) -> SearchValue:
 
 
 def aar_direct(surface: str, be: Geoprocessor) -> SearchValue:
+    """
+    Get a function that calculates an AAR for a trial ELA by directly
+    querying the surface area above the trial ELA.
+    """
     _, max_elev = be.min_max_elevations(surface)
     total_area = be.surface_area(surface, max_elev)
 
@@ -55,6 +75,10 @@ def aar_direct(surface: str, be: Geoprocessor) -> SearchValue:
 
 
 def aar_from_elev_hist(elevations: np.ndarray, counts: np.ndarray) -> SearchValue:
+    """
+    Get a function that calculates an AAR based on a trial ELA using a 2D
+    elevation histogram.
+    """
     # remove last item from elevation bins since length of
     # bins and counts must match here
     if len(elevations) > len(counts):
@@ -70,6 +94,10 @@ def aar_from_elev_hist(elevations: np.ndarray, counts: np.ndarray) -> SearchValu
 
 
 def br_from_elev_hist(elevations: np.ndarray, counts: np.ndarray) -> SearchValue:
+    """
+    Get a function that calculates BR based on a trial ELA using a 2D
+    elevation histogram.
+    """
     # remove last item from elevation bins since length of
     # bins and counts must match here
     if len(elevations) > len(counts):

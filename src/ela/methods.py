@@ -1,10 +1,7 @@
 import math
 import time
 from abc import ABC, abstractmethod
-from re import search
-from typing import Iterable, NamedTuple
-
-from networkx import maximal_matching
+from typing import NamedTuple
 
 from .geoprocessing import Geoprocessor
 from .ratio_calc import (aar_direct, aar_from_elev_hist, absolute_difference,
@@ -14,15 +11,26 @@ from .slice import Slice, create_slices_threadpool
 
 
 class ELA(NamedTuple):
+    """
+    ELA contains the result and parameters of an ELA calculation.
+    """
     dem: str
+    """Path to the DEM used for the ELA."""
     method: str
+    """Method (eg AAR, AABR) used."""
     interval: float
+    """The interval between vertical slices."""
     ratio: float
+    """The ratio sought."""
     ela: float
+    """The ELA found."""
     took: float
+    """Processing time in seconds."""
 
 
 class ELAMethod(ABC):
+    """An ELAMethod defines the basic interface for by which to calculate ELAs."""
+
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__()
         self._gp = gp
@@ -30,10 +38,21 @@ class ELAMethod(ABC):
 
     @abstractmethod
     def estimate_ela(self, *ratios: float) -> list[ELA]:
+        """
+        Perform the ELA calculation, producing one ELA result for each
+        ratio in the `*ratios` argument.
+        :param ratios: One or a list of ratios to find.
+        :return: The ELAs found.
+        """
         raise NotImplementedError()
 
 
 class AAR(ELAMethod):
+    """
+    This ELAMethod uses binary search to quickly find the Accumulation Area
+    Ratio method ELA.
+    """
+
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
 
@@ -48,7 +67,7 @@ class AAR(ELAMethod):
             took = time.perf_counter() - start
             elas.append(ELA(
                 dem=self.dem,
-                method="AAR",
+                method="AAR_ben",
                 interval=0,
                 ratio=r,
                 ela=ela,
@@ -58,6 +77,11 @@ class AAR(ELAMethod):
 
 
 class AABR(ELAMethod):
+    """
+    This ELAMethod uses binary search with vertical slices of `interval` distance
+    to find the Area Altitude Balance Ratio method ELA.
+    """
+
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
         self.interval = interval
@@ -65,6 +89,7 @@ class AABR(ELAMethod):
         self.slices_took: float = 0
 
     def get_slices(self) -> list[Slice]:
+        """Generate slices or retrieve cached slices."""
         if not self.slices:
             start = time.perf_counter()
             self.slices = create_slices_threadpool(self.dem, self.interval, self._gp)
@@ -85,7 +110,7 @@ class AABR(ELAMethod):
             took = time.perf_counter() - start
             elas.append(ELA(
                 dem=self.dem,
-                method="AABR",
+                method="AABR_ben",
                 interval=self.interval,
                 ratio=r,
                 ela=ela,
@@ -95,6 +120,11 @@ class AABR(ELAMethod):
 
 
 class AAR2D(ELAMethod):
+    """
+    This ELAMethod uses the DEM histogram to very quickly find ELAs using the
+    Accumulation Area Ratio method based on 2D surface area.
+    """
+
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
 
@@ -121,6 +151,11 @@ class AAR2D(ELAMethod):
 
 
 class AABR2D(ELAMethod):
+    """
+    This ELAMethod uses the DEM histogram to very quickly find ELAs using the
+    Area Altitude Balance Ratio method based on 2D surface area.
+    """
+
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
 
@@ -147,6 +182,14 @@ class AABR2D(ELAMethod):
 
 
 class AABROriginal(ELAMethod):
+    """
+    This ELAMethod find the Area Altitude Balance Ratio using the 
+    calculation presented by Pellitero, et al (2015) "A GIStool for automatic 
+    calculation of glacier equilibrium-line altitudes". The code is mostly copied
+    directly from Pellitero, but with a few modifications to make it function
+    within this package's system.
+    """
+
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
         self.interval = interval
@@ -211,6 +254,14 @@ class AABROriginal(ELAMethod):
 
 
 class AAROriginal(ELAMethod):
+    """
+    This ELAMethod find the Accumulation Area Ratio using the 
+    calculation presented by Pellitero, et al (2015) "A GIStool for automatic 
+    calculation of glacier equilibrium-line altitudes". The code is mostly copied
+    directly from Pellitero, but with a few modifications to make it function
+    within this package's system.
+    """
+
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
         self.interval = interval
