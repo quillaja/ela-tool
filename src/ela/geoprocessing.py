@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Literal, NamedTuple, Union
+from typing import NamedTuple
 
 import numpy as np
 
@@ -74,17 +74,5 @@ class Geoprocessor(ABC):
 
         :param dem: A path to a DEM.
         :return: A NamedTuple containing the values, counts, and bins.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def create_contours(self, dem: str, polylines: str, contours: Union[float, list[float]]) -> None:
-        """
-        Creates polyline geometry features in a storage location at `polylines`
-        based on the surface of dem and the list of elevations in contours.
-
-        :param dem: A path to a DEM.
-        :param polylines: A path to some storage location, such as a feature class.
-        :param contours: A list of elevations at which to create contour polylines.
         """
         raise NotImplementedError
