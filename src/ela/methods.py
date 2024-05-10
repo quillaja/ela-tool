@@ -43,7 +43,7 @@ class AAR(ELAMethod):
         for r in ratios:
             start = time.perf_counter()
             ela = binary_search(r, min_elev, max_elev,
-                                aar_direct(self.dem),
+                                aar_direct(self.dem, self._gp),
                                 absolute_difference(r))
             took = time.perf_counter() - start
             elas.append(ELA(
@@ -67,7 +67,7 @@ class AABR(ELAMethod):
     def get_slices(self) -> list[Slice]:
         if not self.slices:
             start = time.perf_counter()
-            self.slices = create_slices_threadpool(self.dem, self.interval)
+            self.slices = create_slices_threadpool(self.dem, self.interval, self._gp)
             self.slices_took = time.perf_counter() - start
         return self.slices
 
