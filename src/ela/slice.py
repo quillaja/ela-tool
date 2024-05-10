@@ -33,7 +33,7 @@ def _determine_worker_count() -> int:
     return workers
 
 
-def create_slices(surface: str, interval: float, be: Geoprocessor) -> Iterable[Slice]:
+def create_slices(surface: str, interval: float, be: Geoprocessor) -> list[Slice]:
     """
     Create slices of surface with vertical height interval. Works
     in a single threaded manner.
@@ -80,7 +80,7 @@ def _slice_surface_area(surface: str, total_area: float, be: Geoprocessor) -> Ca
     return work
 
 
-def create_slices_threadpool(surface: str, interval: float, be: Geoprocessor) -> Iterable[Slice]:
+def create_slices_threadpool(surface: str, interval: float, be: Geoprocessor) -> list[Slice]:
     """
     Create slices of surface with vertical height interval. Works
     in a multithreaded manner using concurrent.futures.ThreadPoolExecutor.
@@ -110,7 +110,7 @@ def create_slices_threadpool(surface: str, interval: float, be: Geoprocessor) ->
     return complete_slices
 
 
-def create_slices_processpool(surface: str, interval: float, be: Geoprocessor) -> Iterable[Slice]:
+def create_slices_processpool(surface: str, interval: float, be: Geoprocessor) -> list[Slice]:
     """
     Create slices of surface with vertical height interval. Works
     in a multithreaded manner using multiprocessing.Pool.
