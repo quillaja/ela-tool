@@ -3,8 +3,6 @@ import multiprocessing
 import os
 from dataclasses import dataclass
 from functools import partial
-from itertools import repeat
-from typing import Callable, Iterable
 
 from .geoprocessing import Geoprocessor
 
