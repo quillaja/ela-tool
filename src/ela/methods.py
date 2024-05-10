@@ -7,7 +7,8 @@ from typing import Iterable, NamedTuple
 from networkx import maximal_matching
 
 from .geoprocessing import Geoprocessor
-from .ratio_calc import aar_direct, absolute_difference, br_from_slices
+from .ratio_calc import (aar_direct, aar_from_elev_hist, absolute_difference,
+                         br_from_elev_hist, br_from_slices)
 from .search import binary_search
 from .slice import Slice, create_slices_threadpool
 
@@ -89,6 +90,58 @@ class AABR(ELAMethod):
                 ratio=r,
                 ela=ela,
                 took=took+self.slices_took))
+
+        return elas
+
+
+class AAR2D(ELAMethod):
+    def __init__(self, dem: str, gp: Geoprocessor) -> None:
+        super().__init__(dem, gp)
+
+    def estimate_ela(self, *ratios: float) -> list[ELA]:
+        min_elev, max_elev = self._gp.min_max_elevations(self.dem)
+        hist_data = self._gp.histogram(self.dem)
+
+        elas: list[ELA] = []
+        for r in ratios:
+            start = time.perf_counter()
+            ela = binary_search(r, min_elev, max_elev,
+                                aar_from_elev_hist(hist_data.bins, hist_data.counts),
+                                absolute_difference(r))
+            took = time.perf_counter() - start
+            elas.append(ELA(
+                dem=self.dem,
+                method="AAR_2D",
+                interval=0,
+                ratio=r,
+                ela=ela,
+                took=took))
+
+        return elas
+
+
+class AABR2D(ELAMethod):
+    def __init__(self, dem: str, gp: Geoprocessor) -> None:
+        super().__init__(dem, gp)
+
+    def estimate_ela(self, *ratios: float) -> list[ELA]:
+        min_elev, max_elev = self._gp.min_max_elevations(self.dem)
+        hist_data = self._gp.histogram(self.dem)
+
+        elas: list[ELA] = []
+        for r in ratios:
+            start = time.perf_counter()
+            ela = binary_search(r, min_elev, max_elev,
+                                br_from_elev_hist(hist_data.bins, hist_data.counts),
+                                absolute_difference(r))
+            took = time.perf_counter() - start
+            elas.append(ELA(
+                dem=self.dem,
+                method="AABR_2D",
+                interval=0,
+                ratio=r,
+                ela=ela,
+                took=took))
 
         return elas
 
