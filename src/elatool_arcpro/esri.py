@@ -1,15 +1,17 @@
 import math
 import re
 from functools import cache
+from pathlib import Path
+from typing import Iterable, Union
 
 import arcpy
+import ela
 import numpy as np
-from ela import Geoprocessor, HistData
 
 # arcpy.CheckOutExtension("3D")  # do i need this?
 
 
-class EsriGeoprocessor(Geoprocessor):
+class EsriGeoprocessor(ela.Geoprocessor):
     """A Geoprocessor() that interfaces with ArcGIS Pro via `arcpy`."""
 
     def message(self, msg: str) -> None:
@@ -67,7 +69,7 @@ class EsriGeoprocessor(Geoprocessor):
         # https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/rastertonumpyarray-function.htm
         return arcpy.RasterToNumPyArray(dem, nodata_to_value=math.nan)
 
-    def histogram(self, dem: str) -> HistData:
+    def histogram(self, dem: str) -> ela.HistData:
         values: np.ndarray = self.array(dem)
         values = values.flatten()
         values = values[~np.isnan(values)]
@@ -75,4 +77,48 @@ class EsriGeoprocessor(Geoprocessor):
         low, high = math.floor(values.min()), math.ceil(values.max())
         bins = (x for x in range(low, high+1))
         counts, bins = np.histogram(values, bins=np.fromiter(bins, dtype=float))
-        return HistData(values, counts, bins)
+        return ela.HistData(values, counts, bins)
+
+
+def elas_to_feature_class(elas: Iterable[ela.ELA], out_fc: str, crs: Union[int, arcpy.SpatialReference]) -> None:
+    """
+    Create or overwrite a new feature class at `out_fc` with the ELA
+    information and contour lines contained within `elas`. The new feature class
+    will be created with the spatial reference given in `crs`.
+
+    :param elas: The ELA data to make into a feature class.
+    :param out_fc: The feature class to create.
+    :param crs: spatial reference for the new ELA feature class.
+    """
+    if arcpy.Exists(out_fc):
+        arcpy.Delete_management(out_fc)
+
+    ela_fields = [
+        ["ela_id", "LONG"],
+        ["ELA", "DOUBLE"],
+        ["ratio", "DOUBLE"],
+        ["interval", "DOUBLE"],
+        ["method", "TEXT"],
+        ["dem", "TEXT"]]
+    ela_crs = crs if isinstance(
+        crs, arcpy.SpatialReference) else arcpy.SpatialReference(crs)
+
+    arcpy.CreateFeatureclass_management(
+        out_path=Path(out_fc).parent,
+        out_name=Path(out_fc).name,
+        geometry_type="POLYLINE",
+        spatial_reference=ela_crs)
+    arcpy.AddFields_management(in_table=out_fc, field_description=ela_fields)
+
+    # in order to add fields with ELA information, individual contours must be created
+    # in memory, then their geometry can be written to a separate geodatabase along
+    # with the field information. ContourList_3d() can write multiple contours at
+    # once, but will not add a fields.
+    temp_contour = r"memory\temp_contour"
+    for id, r in enumerate(elas):
+        arcpy.Delete_management(temp_contour)
+        arcpy.ContourList_3d(r.dem, temp_contour, r.ela)
+        with (arcpy.da.SearchCursor(temp_contour, ["SHAPE@"]) as source,
+              arcpy.da.InsertCursor(out_fc, ["SHAPE@"]+[f[0] for f in ela_fields]) as dest):
+            for source_row in source:
+                dest.insertRow((source_row[0], id, r.ela, r.ratio, r.interval, r.method, r.dem))
