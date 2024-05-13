@@ -104,8 +104,8 @@ def elas_to_feature_class(elas: Iterable[ela.ELA], out_fc: str, crs: Union[int, 
         crs, arcpy.SpatialReference) else arcpy.SpatialReference(crs)
 
     arcpy.CreateFeatureclass_management(
-        out_path=Path(out_fc).parent,
-        out_name=Path(out_fc).name,
+        out_path=str(Path(out_fc).parent),
+        out_name=str(Path(out_fc).name),
         geometry_type="POLYLINE",
         spatial_reference=ela_crs)
     arcpy.AddFields_management(in_table=out_fc, field_description=ela_fields)
