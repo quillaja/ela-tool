@@ -1,20 +1,18 @@
-# from elatool_arcpro import SingleDEM
 import time
 from datetime import datetime
 from enum import IntEnum
-from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import Callable, Generator, Iterable, NamedTuple
+from typing import Callable, Iterable, NamedTuple
 
 import arcpy
 import ela
 from elatool_arcpro.esri import EsriGeoprocessor, elas_to_feature_class
-from numpy import single
-from sympy import factor
 
 
 class Toolbox:
+    """The actual ArcPro toolbox. This cannot be renamed."""
+
     def __init__(self):
         """Define the toolbox (the name of the toolbox is the name of the
         .pyt file)."""
@@ -27,6 +25,7 @@ class Toolbox:
 
 
 def is_raster(p: str) -> bool:
+    """Determine if `p` is a raster by trying to make an arcpy.Raster with it."""
     try:
         arcpy.Raster(p)
         return True
@@ -36,10 +35,12 @@ def is_raster(p: str) -> bool:
 
 
 def is_workspace(p: str) -> bool:
+    """A workspace is basically just a directory."""
     return Path(p).is_dir()
 
 
 def workspace_rasters(ws: str) -> list[str]:
+    """Get a list of paths to all rasters within workspace `ws`."""
     orig_ws = arcpy.env.workspace
     arcpy.env.workspace = ws
     rasters = [str(Path(ws, raster)) for raster in arcpy.ListRasters()]
@@ -48,6 +49,11 @@ def workspace_rasters(ws: str) -> list[str]:
 
 
 def gather_rasters(semicolon_list: str) -> list[str]:
+    """
+    Split a list of paths to rasters or workspaces. If the path is to a workspace,
+    get all rasters within that workspace. Combine all raster paths into
+    one big list.
+    """
     paths = semicolon_list.split(";")
     single_rasters = filter(is_raster, paths)
     ws_rasters = chain.from_iterable(workspace_rasters(ws)
@@ -56,6 +62,10 @@ def gather_rasters(semicolon_list: str) -> list[str]:
 
 
 def split_strip(raw: str, sep: str = " ") -> Iterable[str]:
+    """
+    Split `raw` at `sep`, then strip whitespace from each part. Return
+    only those parts that still have content.
+    """
     for part in raw.strip().split(sep):
         part = part.strip()
         if part:
@@ -63,6 +73,12 @@ def split_strip(raw: str, sep: str = " ") -> Iterable[str]:
 
 
 class BatchFindELATool:
+    """
+    This tool will find ELAs for all combinations of glacier surface DEMs,
+    ELA methods (AAR, AABR), intervals, and ratios. All the resultant ELAs are
+    written to a new feature class along with contour lines at the ELA altitudes.
+    Optionally, the data can be written to a CSV as well.
+    """
 
     class MethodDefault(NamedTuple):
         ratios: list[float]
@@ -123,7 +139,7 @@ class BatchFindELATool:
             name="methods",
             displayName="ELA Calculation Methods",
             datatype="GPValueTable",
-            # multiValue=True,
+            multiValue=True,
             parameterType="Required",
             direction="Input")
         params[P.METHOD].columns = [("GPString", "Method"),
@@ -172,14 +188,7 @@ class BatchFindELATool:
 
         P = BatchFindELATool.ParamIndex
 
-        # default_ratios = {
-        #     "AAR 3D": [0.50, 0.55, 0.58, 0.60, 0.65, 0.67, 0.70],
-        #     "AAR 2D": [0.50, 0.55, 0.58, 0.60, 0.65, 0.67, 0.70],
-        #     "AABR 3D": [1.0, 1.1, 1.56, 1.75, 2.0, 2.09, 2.47, 2.5, 3.0],
-        #     "AABR 2D": [1.0, 1.1, 1.56, 1.75, 2.0, 2.09, 2.47, 2.5, 3.0],
-        # }
-        # default_intervals = [100]
-
+        # populate methods with default ratios and intervals
         if params[P.METHOD].value:
             value = params[P.METHOD].value
             for i, (method, ratios, intervals) in enumerate(value):
@@ -199,14 +208,8 @@ class BatchFindELATool:
         """The source code of the tool."""
 
         P = BatchFindELATool.ParamIndex
-        be = EsriGeoprocessor()
 
-        # arcpy.AddMessage(params[P.DEM].value)
-        # arcpy.AddMessage(params[P.METHOD].value)
-        # arcpy.AddMessage(params[P.OUT_CONTOURS].value)
-        # arcpy.AddMessage(params[P.OUT_CRS].value.factoryCode)
-        # arcpy.AddMessage(params[P.OUT_CSV].value)
-
+        # get inputs in sensible formats (mostly text)
         dem_raw: str = params[P.DEM].valueAsText
         methods: list[tuple[str, str, str]] = params[P.METHOD].value
         out_contours: str = params[P.OUT_CONTOURS].valueAsText
@@ -217,9 +220,9 @@ class BatchFindELATool:
         all_dems = gather_rasters(dem_raw)
         arcpy.AddMessage(f"{all_dems=}")
 
-        # return
         elas: list[ela.ELA] = []
         for dem in all_dems:
+            arcpy.AddMessage(f"processing {dem} ...")
             for method, ratios_raw, intervals_raw in methods:
                 ratios: list[float] = [float(r) for r in split_strip(ratios_raw)]
                 intervals: list[float] = [float(ival) for ival in split_strip(intervals_raw)]
@@ -230,11 +233,16 @@ class BatchFindELATool:
                     ela_method: ela.ELAMethod = self.defaults[method].factory(ival, dem)
                     elas += ela_method.estimate_ela(*ratios)
                     took = time.perf_counter()-start
-                    arcpy.AddMessage(f"{dem} {method} {took:.3f}s")
+                    arcpy.AddMessage(f"  {method} with interval {ival} took {took:.3f}s")
 
+        # make feature class with ela results
         elas_to_feature_class(elas=elas,
                               out_fc=out_contours,
                               crs=out_crs)
+
+        # write ela results to CSV if a path is specified
+        if out_csv:
+            ela.to_csv(out_csv, elas)
 
     def postExecute(self, parameters: list[arcpy.Parameter]):
         """This method takes place after outputs are processed and
