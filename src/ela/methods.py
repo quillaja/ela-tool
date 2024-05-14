@@ -53,6 +53,8 @@ class AAR(ELAMethod):
     Ratio method ELA.
     """
 
+    name = "AAR_3D"
+
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
 
@@ -67,7 +69,7 @@ class AAR(ELAMethod):
             took = time.perf_counter() - start
             elas.append(ELA(
                 dem=self.dem,
-                method="AAR_ben",
+                method=self.name,
                 interval=0,
                 ratio=r,
                 ela=ela,
@@ -81,6 +83,8 @@ class AABR(ELAMethod):
     This ELAMethod uses binary search with vertical slices of `interval` distance
     to find the Area Altitude Balance Ratio method ELA.
     """
+
+    name = "AABR_3D"
 
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
@@ -110,7 +114,7 @@ class AABR(ELAMethod):
             took = time.perf_counter() - start
             elas.append(ELA(
                 dem=self.dem,
-                method="AABR_ben",
+                method=self.name,
                 interval=self.interval,
                 ratio=r,
                 ela=ela,
@@ -124,6 +128,8 @@ class AAR2D(ELAMethod):
     This ELAMethod uses the DEM histogram to very quickly find ELAs using the
     Accumulation Area Ratio method based on 2D surface area.
     """
+
+    name = "AAR_2D"
 
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
@@ -141,7 +147,7 @@ class AAR2D(ELAMethod):
             took = time.perf_counter() - start
             elas.append(ELA(
                 dem=self.dem,
-                method="AAR_2D",
+                method=self.name,
                 interval=0,
                 ratio=r,
                 ela=ela,
@@ -155,6 +161,8 @@ class AABR2D(ELAMethod):
     This ELAMethod uses the DEM histogram to very quickly find ELAs using the
     Area Altitude Balance Ratio method based on 2D surface area.
     """
+
+    name = "AABR_2D"
 
     def __init__(self, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
@@ -172,7 +180,7 @@ class AABR2D(ELAMethod):
             took = time.perf_counter() - start
             elas.append(ELA(
                 dem=self.dem,
-                method="AABR_2D",
+                method=self.name,
                 interval=0,
                 ratio=r,
                 ela=ela,
@@ -189,6 +197,8 @@ class AABROriginal(ELAMethod):
     directly from Pellitero, but with a few modifications to make it function
     within this package's system.
     """
+
+    name = "AABR_Original"
 
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
@@ -244,7 +254,7 @@ class AABROriginal(ELAMethod):
 
             elas.append(ELA(
                 dem=self.dem,
-                method="AABR_original",
+                method=self.name,
                 interval=interval,
                 ratio=br,
                 ela=result,
@@ -261,6 +271,8 @@ class AAROriginal(ELAMethod):
     directly from Pellitero, but with a few modifications to make it function
     within this package's system.
     """
+
+    name = "AAR_Original"
 
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
@@ -312,7 +324,7 @@ class AAROriginal(ELAMethod):
 
             elas.append(ELA(
                 dem=self.dem,
-                method="AAR_original",
+                method=self.name,
                 interval=interval,
                 ratio=ratio,
                 ela=elaok,
