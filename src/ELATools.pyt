@@ -3,11 +3,13 @@ from datetime import datetime
 from enum import IntEnum
 from itertools import chain
 from pathlib import Path
-from typing import Callable, Iterable, NamedTuple
+from typing import Any, Callable, Iterable, NamedTuple, Optional
 
 import arcpy
+import arcpy.geoprocessing
 import ela
 from elatool_arcpro.esri import EsriGeoprocessor, elas_to_feature_class
+from pytest import param
 
 
 class Toolbox:
@@ -21,7 +23,7 @@ class Toolbox:
         self.description = "Contains tools for calculating ELAs on glacier surfaces and producing a variety of outputs."
 
         # List of tool classes associated with this toolbox
-        self.tools = [BatchFindELATool]
+        self.tools = [BatchFindELATool, MultiExtractRasterTool]
 
 
 def is_raster(p: str) -> bool:
@@ -74,7 +76,7 @@ def split_strip(raw: str, sep: str = " ") -> Iterable[str]:
 
 class BatchFindELATool:
     """
-    This tool will find ELAs for all combinations of glacier surface DEMs,
+    The Find ELAs tool will find ELAs for all combinations of glacier surface DEMs,
     ELA methods (AAR, AABR), intervals, and ratios. All the resultant ELAs are
     written to a new feature class along with contour lines at the ELA altitudes.
     Optionally, the data can be written to a CSV as well.
@@ -94,8 +96,11 @@ class BatchFindELATool:
 
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
-        self.label = f"Find ELAs DEM TRIAL {datetime.now():%H:%M:%S}"
-        self.description = "Something descriptive here."
+        self.label = f"Find ELAs {datetime.now():%H:%M:%S}"
+        self.description = "The Find ELAs tool will find ELAs for all combinations of glacier surface DEMs,"\
+            "ELA methods (AAR, AABR), intervals, and ratios. All the resultant ELAs are"\
+            "written to a new feature class along with contour lines at the ELA altitudes."\
+            "Optionally, the data can be written to a CSV as well."
 
         gp = EsriGeoprocessor()
 
@@ -130,7 +135,7 @@ class BatchFindELATool:
         params[P.DEM] = arcpy.Parameter(
             name="in_dems",
             displayName="Glacier surface DEMs",
-            datatype=["DERasterDataset", "Workspace"],
+            datatype=["GPRasterLayer", "Workspace"],
             multiValue=True,
             parameterType="Required",
             direction="Input")
@@ -248,3 +253,189 @@ class BatchFindELATool:
         """This method takes place after outputs are processed and
         added to the display."""
         pass
+
+
+class MultiExtractRasterTool:
+    """
+    The Extract Multiple Rasters tool will extract multiple rasters from a single 
+    large raster using the clipping/masking polygons in an input feature class. The
+    resultant rasters can be written to a geodatabase or folder.
+    """
+
+    class ParamIndex(IntEnum):
+        DEM = 0
+        POLYGONS = 1
+        OUT_WS = 2
+        NAME = 3
+        EXPR = 4
+
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = f"Extract Multiple Rasters {datetime.now():%H:%M:%S}"
+        self.description = "The Extract Multiple Rasters tool will extract multiple rasters "\
+            "from a single large raster using the clipping/masking polygons in an input "\
+            "feature class. The resultant rasters can be written to a geodatabase or folder."
+
+    def getParameterInfo(self) -> list[arcpy.Parameter]:
+        """Define the tool parameters."""
+
+        P = MultiExtractRasterTool.ParamIndex
+        params: list[arcpy.Parameter] = [arcpy.Parameter()]*len(P)
+
+        params[P.DEM] = arcpy.Parameter(
+            name="in_dem",
+            displayName="Source raster",
+            datatype="GPRasterLayer",
+            multiValue=False,
+            parameterType="Required",
+            direction="Input")
+
+        params[P.POLYGONS] = arcpy.Parameter(
+            name="polygons",
+            displayName="Clipping polygons",
+            datatype="GPFeatureLayer",
+            multiValue=False,
+            parameterType="Required",
+            direction="Input")
+        params[P.POLYGONS].filter.list = ["Polygon"]
+
+        params[P.OUT_WS] = arcpy.Parameter(
+            name="out_ws",
+            displayName="Output workspace",
+            datatype="DEWorkspace",
+            multiValue=False,
+            parameterType="Required",  # watch out setting this to derived
+            direction="Input")
+        params[P.OUT_WS].value = str(arcpy.env.workspace)
+
+        params[P.NAME] = arcpy.Parameter(
+            name="name_field",
+            displayName="Name field in clipping polygons",
+            datatype="Field",
+            multiValue=False,
+            parameterType="Optional",
+            direction="Input")
+        params[P.NAME].filter.list = ["Text"]
+        params[P.NAME].parameterDependencies = [params[P.POLYGONS].name]
+
+        params[P.EXPR] = arcpy.Parameter(
+            name="name_expr",
+            displayName="Python expression on 'name' to alter name field",
+            datatype="GPString",
+            multiValue=False,
+            parameterType="Optional",
+            direction="Input")
+        params[P.EXPR].controlCLSID = "{E5456E51-0C41-4797-9EE4-5269820C6F0E}"  # multiline
+
+        return params
+
+    def isLicensed(self):
+        """Set whether the tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, params: list[arcpy.Parameter]):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+
+        P = MultiExtractRasterTool.ParamIndex
+
+    def updateMessages(self, params: list[arcpy.Parameter]):
+        """Modify the messages created by internal validation for each tool
+        parameter. This method is called after internal validation."""
+
+        P = MultiExtractRasterTool.ParamIndex
+
+        # check and set error if the python expression has content but
+        # no name field was chosen
+        if params[P.EXPR].valueAsText and (not params[P.NAME].valueAsText):
+            params[P.NAME].setErrorMessage(
+                "A name field must be chosen if a python expression is given.")
+
+    def execute(self, params: list[arcpy.Parameter], messages):
+        """The source code of the tool."""
+
+        P = MultiExtractRasterTool.ParamIndex
+
+        # get inputs in sensible formats (mostly text)
+        dem: str = params[P.DEM].valueAsText
+        polygons: Any = params[P.POLYGONS].value  # arcpy.Value (?) or 'Layer'
+        out_ws: str = params[P.OUT_WS].valueAsText
+        name_field: Optional[str] = params[P.NAME].valueAsText  # None if blank
+        name_expr: Optional[str] = params[P.EXPR].valueAsText  # None if blank
+
+        def is_layer(thing: Any) -> bool:
+            try:
+                thing.getSelectionSet()
+                return True
+            except AttributeError:
+                pass
+            return False
+
+        def eval_name_expr(expr: str) -> Callable[[str], str]:
+            return lambda name: str(eval(expr, {}, {"name": name}))
+
+        def sql_select_where_from_selection(oids: set[str]) -> str:
+            return f"OBJECTID IN ({','.join(str(id) for id in oids)})"
+
+        arcpy.AddMessage(f"{dem=}\n{polygons=}\n{out_ws=}\n{name_field=}\n{name_expr=}")
+        arcpy.AddMessage(polygons)
+
+        clipping_fc: str = ""
+        sql_clause: str = ""
+        name_prep_func: Callable[[str], str] = None
+
+        if is_layer(polygons):
+            arcpy.AddMessage("i guess it's a Layer")
+            clipping_fc = polygons.dataSource
+            selection = polygons.getSelectionSet()
+            sql_clause = sql_select_where_from_selection(selection) if selection is not None else ""
+        else:
+            arcpy.AddMessage("it's a string/'geoprocessing value object'")
+            clipping_fc = str(polygons)
+
+        if name_expr:
+            name_prep_func = eval_name_expr(name_expr)
+
+        multi_extract_raster(
+            dem=dem,
+            polygons=clipping_fc,
+            output_location=out_ws,
+            sql_select_where=sql_clause,
+            name_field=name_field,
+            name_prep=name_prep_func)
+
+    def postExecute(self, parameters: list[arcpy.Parameter]):
+        """This method takes place after outputs are processed and
+        added to the display."""
+        pass
+
+
+def multi_extract_raster(dem: str, polygons: str, output_location: str,
+                         sql_select_where: str = "",
+                         name_field: Optional[str] = None,
+                         name_prep: Optional[Callable[[str], str]] = None):
+
+    fields = ["SHAPE@"]
+    if name_field:
+        fields.append(name_field)
+
+    ext = ".tif" if Path(output_location).suffix.lower() != ".gdb" else ""
+
+    with arcpy.da.SearchCursor(in_table=polygons,
+                               field_names=fields,
+                               where_clause=sql_select_where) as cursor:
+        for i, row in enumerate(cursor):
+            if name_field:
+                if name_prep:
+                    name = name_prep(str(row[1]))
+                else:
+                    name = str(row[1])
+            else:
+                name = f"{i:06d}"
+            output = str(Path(output_location, name).with_suffix(ext))
+
+            shape = row[0]
+            clipped = arcpy.sa.ExtractByMask(in_raster=dem, in_mask_data=shape)
+            clipped.save(output)
+            arcpy.AddMessage(f"created {output}")
