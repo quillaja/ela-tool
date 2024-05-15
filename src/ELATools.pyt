@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable, NamedTuple, Optional
 import arcpy
 import arcpy.geoprocessing
 import ela
+from click import Option
 from elatool_arcpro.esri import EsriGeoprocessor, elas_to_feature_class
 from pytest import param
 
@@ -268,6 +269,7 @@ class MultiExtractRasterTool:
         OUT_WS = 2
         NAME = 3
         EXPR = 4
+        SQL = 5
 
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
@@ -320,12 +322,21 @@ class MultiExtractRasterTool:
 
         params[P.EXPR] = arcpy.Parameter(
             name="name_expr",
-            displayName="Python expression on 'name' to alter name field",
+            displayName="Python expression with 'name' to customize output raster name",
             datatype="GPString",
             multiValue=False,
             parameterType="Optional",
             direction="Input")
         params[P.EXPR].controlCLSID = "{E5456E51-0C41-4797-9EE4-5269820C6F0E}"  # multiline
+
+        params[P.SQL] = arcpy.Parameter(
+            name="sql_filter",
+            displayName="Polygons filter SQL expression",
+            datatype="GPSQLExpression",
+            multiValue=False,
+            parameterType="Optional",
+            direction="Input")
+        params[P.SQL].parameterDependencies = [params[P.POLYGONS].name]
 
         return params
 
@@ -363,8 +374,10 @@ class MultiExtractRasterTool:
         out_ws: str = params[P.OUT_WS].valueAsText
         name_field: Optional[str] = params[P.NAME].valueAsText  # None if blank
         name_expr: Optional[str] = params[P.EXPR].valueAsText  # None if blank
+        sql_clause: Optional[str] = params[P.SQL].valueAsText  # None if blank
 
         def is_layer(thing: Any) -> bool:
+            """Determine if the 'feature layer' is a Layer object."""
             try:
                 thing.getSelectionSet()
                 return True
@@ -373,32 +386,33 @@ class MultiExtractRasterTool:
             return False
 
         def eval_name_expr(expr: str) -> Callable[[str], str]:
+            """Make a function that uses the python expression to transform a string."""
             return lambda name: str(eval(expr, {}, {"name": name}))
 
         def sql_select_where_from_selection(oids: set[str]) -> str:
+            """Prepare a sql statment with the set of object ids."""
             return f"OBJECTID IN ({','.join(str(id) for id in oids)})"
 
-        arcpy.AddMessage(f"{dem=}\n{polygons=}\n{out_ws=}\n{name_field=}\n{name_expr=}")
-        arcpy.AddMessage(polygons)
-
         clipping_fc: str = ""
-        sql_clause: str = ""
-        name_prep_func: Callable[[str], str] = None
+        name_prep_func: Callable[[str], str]
 
         if is_layer(polygons):
-            arcpy.AddMessage("i guess it's a Layer")
+            # polygons is a "Layer" and may have an active selection
             clipping_fc = polygons.dataSource
             selection = polygons.getSelectionSet()
-            sql_clause = sql_select_where_from_selection(selection) if selection is not None else ""
+            if sql_clause and selection:
+                sql_clause += " AND " + sql_select_where_from_selection(selection)
         else:
-            arcpy.AddMessage("it's a string/'geoprocessing value object'")
+            # polygons is a full path to a feature class
             clipping_fc = str(polygons)
 
+        # if a python expression is provided, wrap the call to 'eval'
+        # in a function that can be passed to multi_extract_raster()
         if name_expr:
             name_prep_func = eval_name_expr(name_expr)
 
         multi_extract_raster(
-            dem=dem,
+            raster=dem,
             polygons=clipping_fc,
             output_location=out_ws,
             sql_select_where=sql_clause,
@@ -411,10 +425,28 @@ class MultiExtractRasterTool:
         pass
 
 
-def multi_extract_raster(dem: str, polygons: str, output_location: str,
-                         sql_select_where: str = "",
+def multi_extract_raster(raster: str, polygons: str, output_location: str,
+                         sql_select_where: Optional[str] = None,
                          name_field: Optional[str] = None,
-                         name_prep: Optional[Callable[[str], str]] = None):
+                         name_prep: Optional[Callable[[str], str]] = None) -> None:
+    """
+    Uses the polygons to extract multiple rasters from a single raster. They
+    will be saved to `output_location` as a arcpy `Raster` type if `output_location`
+    is a geodatabase (.gdb) or as a TIFF (.tif) if `output_location` is a normal
+    file folder.
+
+    An sql "where" clause can be provided to select a subset of polygons. A field
+    within polygons can be specified to use as the name of each new clipped raster,
+    and the name can be transformed with the `name_prep` function. If no name_field
+    is given, the new rasters are named with sequential numbers from zero.
+
+    :param raster: A path to a source raster that will be clipped.
+    :param polygons: A path to a polygon feature class for clipping shapes.
+    :param output_location: A path to a geodatabase or folder to put the new rasters.
+    :param sql_select_where: A sql WHERE clause to get a subset of polygons.
+    :param name_field: A field/attribute of polygons to use in naming the new rasters.
+    :param name_prep: A function to transform name_field before saving the new rasters.
+    """
 
     fields = ["SHAPE@"]
     if name_field:
@@ -436,6 +468,13 @@ def multi_extract_raster(dem: str, polygons: str, output_location: str,
             output = str(Path(output_location, name).with_suffix(ext))
 
             shape = row[0]
-            clipped = arcpy.sa.ExtractByMask(in_raster=dem, in_mask_data=shape)
-            clipped.save(output)
-            arcpy.AddMessage(f"created {output}")
+            try:
+                clipped = arcpy.sa.ExtractByMask(in_raster=raster, in_mask_data=shape)
+                clipped.save(output)
+                arcpy.AddMessage(f"created {output}")
+            except arcpy.ExecuteError as e:
+                if "010568" in str(e):  # 010568 is the error id as of 2024-05-15
+                    arcpy.AddWarning(
+                        "A polygon was skipped because it is outside the raster extents.")
+                else:
+                    arcpy.AddWarning(e)
