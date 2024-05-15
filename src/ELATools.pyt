@@ -95,7 +95,7 @@ class BatchFindELATool:
 
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
-        self.label = f"Find ELAs {datetime.now():%H:%M:%S}"
+        self.label = f"Find ELAs"
         self.description = "The Find ELAs tool will find ELAs for all combinations of glacier surface DEMs,"\
             "ELA methods (AAR, AABR), intervals, and ratios. All the resultant ELAs are"\
             "written to a new feature class along with contour lines at the ELA altitudes."\
@@ -271,7 +271,7 @@ class MultiExtractRasterTool:
 
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
-        self.label = f"Extract Multiple Rasters {datetime.now():%H:%M:%S}"
+        self.label = f"Extract Multiple Rasters"
         self.description = "The Extract Multiple Rasters tool will extract multiple rasters "\
             "from a single large raster using the clipping/masking polygons in an input "\
             "feature class. The resultant rasters can be written to a geodatabase or folder."
@@ -436,7 +436,8 @@ def multi_extract_raster(raster: str, polygons: str, output_location: str,
     An sql "where" clause can be provided to select a subset of polygons. A field
     within polygons can be specified to use as the name of each new clipped raster,
     and the name can be transformed with the `name_prep` function. If no name_field
-    is given, the new rasters are named with sequential numbers from zero.
+    is given, or if a row's value is NULL, the new rasters are named with 
+    sequential numbers from zero.
 
     :param raster: A path to a source raster that will be clipped.
     :param polygons: A path to a polygon feature class for clipping shapes.
@@ -456,7 +457,7 @@ def multi_extract_raster(raster: str, polygons: str, output_location: str,
                                field_names=fields,
                                where_clause=sql_select_where) as cursor:
         for i, row in enumerate(cursor):
-            if name_field:
+            if name_field and row[1]:
                 if name_prep:
                     name = name_prep(str(row[1]))
                 else:
