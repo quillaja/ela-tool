@@ -8,9 +8,7 @@ from typing import Any, Callable, Iterable, NamedTuple, Optional
 import arcpy
 import arcpy.geoprocessing
 import ela
-from click import Option
 from elatool_arcpro.esri import EsriGeoprocessor, elas_to_feature_class
-from pytest import param
 
 
 class Toolbox:
