@@ -198,7 +198,7 @@ class AABROriginal(ELAMethod):
     within this package's system.
     """
 
-    name = "AABR_Original"
+    name = "AABR_3D_Pellitero"
 
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
@@ -272,7 +272,7 @@ class AAROriginal(ELAMethod):
     within this package's system.
     """
 
-    name = "AAR_Original"
+    name = "AAR_3D_Pellitero"
 
     def __init__(self, interval: float, dem: str, gp: Geoprocessor) -> None:
         super().__init__(dem, gp)
