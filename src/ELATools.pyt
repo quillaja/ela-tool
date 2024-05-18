@@ -81,11 +81,13 @@ class BatchFindELATool:
     Optionally, the data can be written to a CSV as well.
     """
 
+    # see defaults dict in __init__
     class MethodDefault(NamedTuple):
         ratios: list[float]
         intervals: list[float]
         factory: Callable[[float, str], ela.ELAMethod]
 
+    # indices for tool input parameters
     class ParamIndex(IntEnum):
         DEM = 0
         METHOD = 1
@@ -101,8 +103,11 @@ class BatchFindELATool:
             "written to a new feature class along with contour lines at the ELA altitudes."\
             "Optionally, the data can be written to a CSV as well."
 
-        gp = EsriGeoprocessor()
+        gp = EsriGeoprocessor()  # access to arcpy from within the ela package
 
+        # this dictionary configures the geoprocessing tool's defaults for
+        # ELA methods. It also provides a "factory" function to more easily
+        # create new ELAMethod instances from parameters
         self.defaults = {
             "AAR 3D": BatchFindELATool.MethodDefault(
                 ratios=[0.50, 0.55, 0.58, 0.60, 0.65, 0.67, 0.70],
@@ -122,7 +127,17 @@ class BatchFindELATool:
             "AABR 2D": BatchFindELATool.MethodDefault(
                 ratios=[1.0, 1.1, 1.56, 1.75, 2.0, 2.09, 2.47, 2.5, 3.0],
                 intervals=[],
-                factory=lambda ival, dem: ela.AABR2D(dem, gp))
+                factory=lambda ival, dem: ela.AABR2D(dem, gp)),
+
+            "AAR 3D Pellitero": BatchFindELATool.MethodDefault(
+                ratios=[0.50, 0.55, 0.58, 0.60, 0.65, 0.67, 0.70],
+                intervals=[100],
+                factory=lambda ival, dem: ela.AAROriginal(ival, dem, gp)),
+
+            "AABR 3D Pellitero": BatchFindELATool.MethodDefault(
+                ratios=[1.0, 1.1, 1.56, 1.75, 2.0, 2.09, 2.47, 2.5, 3.0],
+                intervals=[100],
+                factory=lambda ival, dem: ela.AABROriginal(ival, dem, gp))
         }
 
     def getParameterInfo(self) -> list[arcpy.Parameter]:
@@ -172,12 +187,11 @@ class BatchFindELATool:
 
         params[P.OUT_CSV] = arcpy.Parameter(
             name="out_csv",
-            displayName="Output CSV",
+            displayName="Optional CSV output location",
             datatype="DETable",
             multiValue=False,
             parameterType="Optional",
-            direction="Output",
-            category="Additional Outputs")
+            direction="Output")
 
         return params
 
@@ -193,6 +207,7 @@ class BatchFindELATool:
         P = BatchFindELATool.ParamIndex
 
         # populate methods with default ratios and intervals
+        # TODO: reset/change default ratios and intervals when method changes
         if params[P.METHOD].value:
             value = params[P.METHOD].value
             for i, (method, ratios, intervals) in enumerate(value):
@@ -220,10 +235,10 @@ class BatchFindELATool:
         out_crs: int = int(params[P.OUT_CRS].value.factoryCode)
         out_csv: str = params[P.OUT_CSV].valueAsText
 
-        arcpy.AddMessage(f"{dem_raw=}\n{methods=}\n{out_contours=}\n{out_crs=}\n{out_csv=}")
-        all_dems = gather_rasters(dem_raw)
-        arcpy.AddMessage(f"{all_dems=}")
+        all_dems = gather_rasters(dem_raw)  # all possible input rasters to 1 master list
 
+        # perform ELA calculation on each DEM, method, interval, and ratio.
+        # ratios and intervals input will be cleaned/preprepared from strings
         elas: list[ela.ELA] = []
         for dem in all_dems:
             arcpy.AddMessage(f"processing {dem} ...")
@@ -235,9 +250,11 @@ class BatchFindELATool:
                 for ival in intervals:
                     start = time.perf_counter()
                     ela_method: ela.ELAMethod = self.defaults[method].factory(ival, dem)
-                    elas += ela_method.estimate_ela(*ratios)
-                    took = time.perf_counter()-start
-                    arcpy.AddMessage(f"  {method} with interval {ival} took {took:.3f}s")
+                    result = ela_method.estimate_ela(*ratios)
+                    elas += result
+                    took = (time.perf_counter()-start)/len(ratios)
+                    arcpy.AddMessage(
+                        f"  {method} with interval {ival} took {took:.3f}s per ratio")
 
         # make feature class with ela results
         elas_to_feature_class(elas=elas,
@@ -252,6 +269,26 @@ class BatchFindELATool:
         """This method takes place after outputs are processed and
         added to the display."""
         pass
+
+
+def is_layer(thing: Any) -> bool:
+    """Determine if the 'feature layer' is a Layer object."""
+    try:
+        thing.getSelectionSet()
+        return True
+    except AttributeError:
+        pass
+    return False
+
+
+def eval_name_expr(expr: str) -> Callable[[str], str]:
+    """Make a function that uses the python expression to transform a string."""
+    return lambda name: str(eval(expr, {}, {"name": name}))
+
+
+def sql_select_where_from_selection(oids: set[str]) -> str:
+    """Prepare a sql statment with the set of object ids."""
+    return f"OBJECTID IN ({','.join(str(id) for id in oids)})"
 
 
 class MultiExtractRasterTool:
@@ -374,23 +411,6 @@ class MultiExtractRasterTool:
         name_expr: Optional[str] = params[P.EXPR].valueAsText  # None if blank
         sql_clause: Optional[str] = params[P.SQL].valueAsText  # None if blank
 
-        def is_layer(thing: Any) -> bool:
-            """Determine if the 'feature layer' is a Layer object."""
-            try:
-                thing.getSelectionSet()
-                return True
-            except AttributeError:
-                pass
-            return False
-
-        def eval_name_expr(expr: str) -> Callable[[str], str]:
-            """Make a function that uses the python expression to transform a string."""
-            return lambda name: str(eval(expr, {}, {"name": name}))
-
-        def sql_select_where_from_selection(oids: set[str]) -> str:
-            """Prepare a sql statment with the set of object ids."""
-            return f"OBJECTID IN ({','.join(str(id) for id in oids)})"
-
         clipping_fc: str = ""
         name_prep_func: Callable[[str], str]
 
@@ -409,6 +429,7 @@ class MultiExtractRasterTool:
         if name_expr:
             name_prep_func = eval_name_expr(name_expr)
 
+        # do it
         multi_extract_raster(
             raster=dem,
             polygons=clipping_fc,
