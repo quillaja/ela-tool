@@ -95,6 +95,13 @@ class BatchFindELATool:
         OUT_CRS = 3
         OUT_CSV = 4
 
+    # this class variable is meant as a method "memo" so that in updateParameters()
+    # we can check if the user changed the selected method or not. Apparently ArcGIS
+    # creates new instances of this class all the damn time, so making this an instance
+    # variable doesn't work (see link). The dict is reset in the execute() method.
+    # https://gis.stackexchange.com/questions/156939/python-toolbox-tool-objects-do-not-remember-instance-variables-between-function
+    _method_selection: dict[int, str] = {}
+
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = f"Find ELAs"
@@ -207,14 +214,22 @@ class BatchFindELATool:
         P = BatchFindELATool.ParamIndex
 
         # populate methods with default ratios and intervals
-        # TODO: reset/change default ratios and intervals when method changes
         if params[P.METHOD].value:
             value = params[P.METHOD].value
             for i, (method, ratios, intervals) in enumerate(value):
+                # check if current method is the method previously selected at this index,
+                # and if not, reset the ratios and intervals and save the new method selection
+                if i not in self._method_selection or method != self._method_selection[i]:
+                    ratios = ""
+                    intervals = ""
+                    self._method_selection[i] = method
+                # set default ratios and intervals for the selected method if there
+                # is nothing already entered by the user
                 if not ratios or len(str(ratios).strip()) == 0:
                     ratios = " ".join(str(m) for m in self.defaults[method].ratios)
                 if not intervals or len(str(intervals).strip()) == 0:
                     intervals = " ".join(str(ival) for ival in self.defaults[method].intervals)
+                # write the updated method parameters
                 value[i] = [method, ratios, intervals]
             params[P.METHOD].value = value
 
@@ -226,6 +241,7 @@ class BatchFindELATool:
     def execute(self, params: list[arcpy.Parameter], messages):
         """The source code of the tool."""
 
+        self._method_selection.clear()  # reset class method memo when finally executing
         P = BatchFindELATool.ParamIndex
 
         # get inputs in sensible formats (mostly text)
