@@ -1,8 +1,8 @@
 import math
 import re
-from functools import cache
+from functools import cache, reduce
 from pathlib import Path
-from typing import Iterable, Union
+from typing import Callable, Iterable, Optional, Union
 
 import arcpy
 import ela
@@ -120,5 +120,66 @@ def elas_to_feature_class(elas: Iterable[ela.ELA], out_fc: str, crs: Union[int, 
         arcpy.ContourList_3d(r.dem, temp_contour, r.ela)
         with (arcpy.da.SearchCursor(temp_contour, ["SHAPE@"]) as source,
               arcpy.da.InsertCursor(out_fc, ["SHAPE@"]+[f[0] for f in ela_fields]) as dest):
-            for source_row in source:
-                dest.insertRow((source_row[0], id, r.ela, r.ratio, r.interval, r.method, r.dem))
+            # make one multipart feature per ela
+            geom: arcpy.Geometry = reduce(lambda a, b: a.union(b), [row[0] for row in source])
+            dest.insertRow((geom, id, r.ela, r.ratio, r.interval, r.method, r.dem))
+            # this part makes each contour part a new feature
+            # for source_row in source:
+            #     dest.insertRow((source_row[0], id, r.ela, r.ratio, r.interval, r.method, r.dem))
+
+
+def multi_extract_raster(raster: str, polygons: str, output_location: str,
+                         sql_select_where: Optional[str] = None,
+                         name_field: Optional[str] = None,
+                         name_prep: Optional[Callable[[str], str]] = None) -> None:
+    """
+    Uses the polygons to extract multiple rasters from a single raster. They
+    will be saved to `output_location` as a arcpy `Raster` type if `output_location`
+    is a geodatabase (.gdb) or as a TIFF (.tif) if `output_location` is a normal
+    file folder.
+
+    An sql "where" clause can be provided to select a subset of polygons. A field
+    within polygons can be specified to use as the name of each new clipped raster,
+    and the name can be transformed with the `name_prep` function. If no name_field
+    is given, or if a row's value is NULL, the new rasters are named with
+    sequential numbers from zero.
+
+    :param raster: A path to a source raster that will be clipped.
+    :param polygons: A path to a polygon feature class for clipping shapes.
+    :param output_location: A path to a geodatabase or folder to put the new rasters.
+    :param sql_select_where: A sql WHERE clause to get a subset of polygons.
+    :param name_field: A field/attribute of polygons to use in naming the new rasters.
+    :param name_prep: A function to transform name_field before saving the new rasters.
+    """
+
+    fields = ["SHAPE@"]
+    if name_field:
+        fields.append(name_field)
+
+    ext = ".tif" if Path(output_location).suffix.lower() != ".gdb" else ""
+
+    with arcpy.da.SearchCursor(in_table=polygons,
+                               field_names=fields,
+                               where_clause=sql_select_where) as cursor:
+        for i, row in enumerate(cursor):
+            if name_field and row[1]:
+                if name_prep:
+                    name = name_prep(str(row[1]))
+                else:
+                    name = str(row[1])
+            else:
+                raster_name = Path(raster).name
+                name = f"{raster_name}_{i:06d}"
+            output = str(Path(output_location, name).with_suffix(ext))
+
+            shape = row[0]
+            try:
+                clipped = arcpy.sa.ExtractByMask(in_raster=raster, in_mask_data=shape)
+                clipped.save(output)
+                arcpy.AddMessage(f"created {output}")
+            except arcpy.ExecuteError as e:
+                if "010568" in str(e):  # 010568 is the error id as of 2024-05-15
+                    arcpy.AddWarning(
+                        "A polygon was skipped because it is outside the raster extents.")
+                else:
+                    arcpy.AddWarning(e)

@@ -1,5 +1,4 @@
 import time
-from datetime import datetime
 from enum import IntEnum
 from itertools import chain
 from pathlib import Path
@@ -8,7 +7,8 @@ from typing import Any, Callable, Iterable, NamedTuple, Optional
 import arcpy
 import arcpy.geoprocessing
 import ela
-from elatool_arcpro.esri import EsriGeoprocessor, elas_to_feature_class
+from elatool_arcpro.esri import (EsriGeoprocessor, elas_to_feature_class,
+                                 multi_extract_raster)
 
 
 class Toolbox:
@@ -190,7 +190,8 @@ class BatchFindELATool:
             multiValue=False,
             parameterType="Required",
             direction="Input")
-        params[P.OUT_CRS].value = arcpy.mp.ArcGISProject("CURRENT").activeMap.spatialReference
+        params[P.OUT_CRS].value = arcpy.SpatialReference(
+            arcpy.mp.ArcGISProject("CURRENT").activeMap.spatialReference.factoryCode)
 
         params[P.OUT_CSV] = arcpy.Parameter(
             name="out_csv",
@@ -309,7 +310,7 @@ def sql_select_where_from_selection(oids: set[str]) -> str:
 
 class MultiExtractRasterTool:
     """
-    The Extract Multiple Rasters tool will extract multiple rasters from a single 
+    The Extract Multiple Rasters tool will extract multiple rasters from a single
     large raster using the clipping/masking polygons in an input feature class. The
     resultant rasters can be written to a geodatabase or folder.
     """
@@ -428,7 +429,7 @@ class MultiExtractRasterTool:
         sql_clause: Optional[str] = params[P.SQL].valueAsText  # None if blank
 
         clipping_fc: str = ""
-        name_prep_func: Callable[[str], str]
+        name_prep_func: Optional[Callable[[str], str]] = None
 
         if is_layer(polygons):
             # polygons is a "Layer" and may have an active selection
@@ -446,7 +447,6 @@ class MultiExtractRasterTool:
         if name_expr:
             name_prep_func = eval_name_expr(name_expr)
 
-        arcpy.AddMessage(str(sql_clause))
         # do it
         multi_extract_raster(
             raster=dem,
@@ -460,59 +460,3 @@ class MultiExtractRasterTool:
         """This method takes place after outputs are processed and
         added to the display."""
         pass
-
-
-def multi_extract_raster(raster: str, polygons: str, output_location: str,
-                         sql_select_where: Optional[str] = None,
-                         name_field: Optional[str] = None,
-                         name_prep: Optional[Callable[[str], str]] = None) -> None:
-    """
-    Uses the polygons to extract multiple rasters from a single raster. They
-    will be saved to `output_location` as a arcpy `Raster` type if `output_location`
-    is a geodatabase (.gdb) or as a TIFF (.tif) if `output_location` is a normal
-    file folder.
-
-    An sql "where" clause can be provided to select a subset of polygons. A field
-    within polygons can be specified to use as the name of each new clipped raster,
-    and the name can be transformed with the `name_prep` function. If no name_field
-    is given, or if a row's value is NULL, the new rasters are named with 
-    sequential numbers from zero.
-
-    :param raster: A path to a source raster that will be clipped.
-    :param polygons: A path to a polygon feature class for clipping shapes.
-    :param output_location: A path to a geodatabase or folder to put the new rasters.
-    :param sql_select_where: A sql WHERE clause to get a subset of polygons.
-    :param name_field: A field/attribute of polygons to use in naming the new rasters.
-    :param name_prep: A function to transform name_field before saving the new rasters.
-    """
-
-    fields = ["SHAPE@"]
-    if name_field:
-        fields.append(name_field)
-
-    ext = ".tif" if Path(output_location).suffix.lower() != ".gdb" else ""
-
-    with arcpy.da.SearchCursor(in_table=polygons,
-                               field_names=fields,
-                               where_clause=sql_select_where) as cursor:
-        for i, row in enumerate(cursor):
-            if name_field and row[1]:
-                if name_prep:
-                    name = name_prep(str(row[1]))
-                else:
-                    name = str(row[1])
-            else:
-                name = f"{i:06d}"
-            output = str(Path(output_location, name).with_suffix(ext))
-
-            shape = row[0]
-            try:
-                clipped = arcpy.sa.ExtractByMask(in_raster=raster, in_mask_data=shape)
-                clipped.save(output)
-                arcpy.AddMessage(f"created {output}")
-            except arcpy.ExecuteError as e:
-                if "010568" in str(e):  # 010568 is the error id as of 2024-05-15
-                    arcpy.AddWarning(
-                        "A polygon was skipped because it is outside the raster extents.")
-                else:
-                    arcpy.AddWarning(e)
