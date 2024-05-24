@@ -434,8 +434,9 @@ class MultiExtractRasterTool:
             # polygons is a "Layer" and may have an active selection
             clipping_fc = polygons.dataSource
             selection = polygons.getSelectionSet()
-            if sql_clause and selection:
-                sql_clause += " AND " + sql_select_where_from_selection(selection)
+            if selection:
+                sql_selection = sql_select_where_from_selection(selection)
+                sql_clause = f"{sql_clause} AND {sql_selection}" if sql_clause else sql_selection
         else:
             # polygons is a full path to a feature class
             clipping_fc = str(polygons)
@@ -445,6 +446,7 @@ class MultiExtractRasterTool:
         if name_expr:
             name_prep_func = eval_name_expr(name_expr)
 
+        arcpy.AddMessage(str(sql_clause))
         # do it
         multi_extract_raster(
             raster=dem,
