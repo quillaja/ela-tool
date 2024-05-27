@@ -1,12 +1,14 @@
 import time
 from enum import IntEnum
-from itertools import chain
+from itertools import chain, groupby
 from pathlib import Path
 from typing import Any, Callable, Iterable, NamedTuple, Optional
 
 import arcpy
 import arcpy.geoprocessing
 import ela
+import ela.graph
+import numpy as np
 from elatool_arcpro.esri import (EsriGeoprocessor, elas_to_feature_class,
                                  multi_extract_raster)
 
@@ -22,7 +24,7 @@ class Toolbox:
         self.description = "Contains tools for calculating ELAs on glacier surfaces and producing a variety of outputs."
 
         # List of tool classes associated with this toolbox
-        self.tools = [BatchFindELATool, MultiExtractRasterTool]
+        self.tools = [BatchFindELATool, MultiExtractRasterTool, CreateHistogramsTool]
 
 
 def is_raster(p: str) -> bool:
@@ -460,3 +462,142 @@ class MultiExtractRasterTool:
         """This method takes place after outputs are processed and
         added to the display."""
         pass
+
+
+class CreateHistogramsTool:
+    """
+    The Create Histograms tool will produce surface area vs elevation
+    histograms of glacier surfaces, and plot the ELAs on them.
+    """
+
+    class ParamIndex(IntEnum):
+        ELAS = 0
+        OUT_DIR = 1
+
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = f"Create Histograms"
+        self.description = "The Create Histograms tool will produce surface "\
+            "area vs elevation histograpms of glacier surfaces."
+
+    def getParameterInfo(self) -> list[arcpy.Parameter]:
+        """Define the tool parameters."""
+
+        P = CreateHistogramsTool.ParamIndex
+        params: list[arcpy.Parameter] = [arcpy.Parameter()]*len(P)
+
+        params[P.ELAS] = arcpy.Parameter(
+            name="elas",
+            displayName="ELAs to plot",
+            datatype="GPFeatureLayer",
+            multiValue=False,
+            parameterType="Required",
+            direction="Input")
+
+        params[P.OUT_DIR] = arcpy.Parameter(
+            name="out_dir",
+            displayName="Output folder",
+            datatype="DEFolder",
+            multiValue=False,
+            parameterType="Required",
+            direction="Input")
+
+        return params
+
+    def isLicensed(self):
+        """Set whether the tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, params: list[arcpy.Parameter]):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+
+        P = CreateHistogramsTool.ParamIndex
+
+    def updateMessages(self, params: list[arcpy.Parameter]):
+        """Modify the messages created by internal validation for each tool
+        parameter. This method is called after internal validation."""
+
+        P = CreateHistogramsTool.ParamIndex
+
+    def execute(self, params: list[arcpy.Parameter], messages):
+        """The source code of the tool."""
+
+        P = CreateHistogramsTool.ParamIndex
+
+        # get inputs in sensible formats (mostly text)
+        elas: Any = params[P.ELAS].value  # arcpy.Value (?) or 'Layer'
+        out_dir: str = params[P.OUT_DIR].valueAsText
+
+        ela_fc: str = ""
+        sql_clause: str = ""
+
+        if is_layer(elas):
+            # polygons is a "Layer" and may have an active selection
+            ela_fc = elas.dataSource
+            selection = elas.getSelectionSet()
+            if selection:
+                sql_clause = sql_select_where_from_selection(selection)
+                arcpy.AddMessage("using only selected features")
+        else:
+            # polygons is a full path to a feature class
+            ela_fc = str(elas)
+
+        create_histograms(
+            gp=EsriGeoprocessor(),
+            ela_fc=ela_fc,
+            out_dir=out_dir,
+            sql_clause=sql_clause)
+
+    def postExecute(self, parameters: list[arcpy.Parameter]):
+        """This method takes place after outputs are processed and
+        added to the display."""
+        pass
+
+
+def create_histograms(gp: ela.Geoprocessor, ela_fc: str, out_dir: str, sql_clause: Optional[str] = None) -> None:
+
+    ela_fields = ["ELA", "ratio", "interval", "method", "dem"]
+
+    elas: list[ela.ELA] = []
+    with arcpy.da.SearchCursor(ela_fc, ela_fields, where_clause=sql_clause) as cursor:
+        for row in cursor:
+            ela_elev, ratio, interval, method, dem = row
+            elas.append(ela.ELA(dem, method, interval, ratio, ela_elev, 0))
+
+    for (dem, method), grp in groupby(elas, lambda x: (x.dem, x.method)):
+        grp = list(grp)
+
+        out = Path(out_dir, f"{Path(dem).stem}_{method}.png")
+
+        elevs = [e.ela for e in grp]
+        ratios = [e.ratio for e in grp]
+        ival = min(grp, key=lambda e: e.interval).interval
+        ival = ival if ival > 0 else 50
+        # arcpy.AddMessage(str(elevs))
+        # arcpy.AddMessage(str(ratios))
+
+        values: np.ndarray
+        if "2D" in method.upper():
+            arcpy.AddMessage(f"getting 2D histogram of {dem}")
+            ival = 1.0
+            hist = gp.histogram(dem)
+            values = hist.values
+
+        elif "3D" in method.upper():
+            arcpy.AddMessage(f"making slices for {dem} with interval {ival:.0f}")
+            slices = ela.make_slices(dem, ival, gp)
+            values = ela.graph.prep_slices_for_histogram(slices)
+
+        else:
+            arcpy.AddWarning(f"unknown method for graphing: {method}")
+            continue
+
+        arcpy.AddMessage(f"saving {out}")
+        ela.graph.plot_elevation_histogram(
+            values=values,
+            ela=elevs,
+            interval=ival,
+            filename=str(out),
+            title=f"Surface Area Dist. for {Path(dem).name} ({method}, interval={ival:.0f})")
