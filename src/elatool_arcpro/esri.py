@@ -182,4 +182,12 @@ def multi_extract_raster(raster: str, polygons: str, output_location: str,
                     arcpy.AddWarning(
                         "A polygon was skipped because it is outside the raster extents.")
                 else:
-                    arcpy.AddWarning(e)
+                    raise e
+            except RuntimeError as e:
+                # RuntimeError:  ERROR 010240: on 2024-05-28 due to space in name of
+                # raster saved to file geodatabase (.gdb)
+                if "010240" in str(e):
+                    arcpy.AddError(
+                        f"Raster '{output}' contains a space or other character that is not allowed in the name of an item in a file geodatabase. Recommend adding 'name.replace(\" \", \"_\")' to the python expression field to customize output raster name.")
+                else:
+                    raise e
