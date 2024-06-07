@@ -177,8 +177,8 @@ class BatchFindELATool:
             multiValue=False,
             parameterType="Required",
             direction="Input")
-        params[P.OUT_CRS].value = arcpy.SpatialReference(
-            arcpy.mp.ArcGISProject("CURRENT").activeMap.spatialReference.factoryCode)
+        if activeMap := arcpy.mp.ArcGISProject("CURRENT").activeMap:
+            params[P.OUT_CRS].value = arcpy.SpatialReference(activeMap.spatialReference.factoryCode)
 
         params[P.OUT_CSV] = arcpy.Parameter(
             name="out_csv",
