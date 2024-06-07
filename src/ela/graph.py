@@ -1,5 +1,5 @@
 from itertools import chain
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,8 +33,22 @@ def prep_slices_for_histogram(slices: Iterable[Slice]) -> np.ndarray:
     return np.fromiter(reconstruction, dtype=float)
 
 
-def plot_elevation_histogram(values: np.ndarray, ela: list[float], interval: float, filename: str,
+def plot_elevation_histogram(data: Union[np.ndarray, Iterable[Slice]], ela: list[float], interval: float, filename: str,
                              title: str = "Vertical Distribution of Surface Area") -> None:
+    """
+    Create and save to disk a PNG histogram of the glacier surface information in `data`.
+    A traditional and cumulative histogram will be produced and saved to `filename`. A vertical
+    red line will be plotted at each elevation in `ela`.
+    """
+    values: np.ndarray
+    if isinstance(data, np.ndarray):
+        values = data
+    else:
+        try:
+            values = prep_slices_for_histogram(data)
+        except AttributeError:
+            raise ValueError("parameter 'data' is not a numpy array or iterable of Slice")
+
     fig, axes = plt.subplots(nrows=2, sharex=True)
     fig.set_size_inches(w=8, h=8)
 

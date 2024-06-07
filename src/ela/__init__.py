@@ -9,6 +9,7 @@ import csv
 import typing
 
 from .geoprocessing import Geoprocessor, HistData
+from .graph import plot_elevation_histogram as plot_histogram
 from .methods import (AABR, AABR2D, AAR, AAR2D, ELA, AABROriginal, AAROriginal,
                       ELAMethod)
 from .slice import Slice
